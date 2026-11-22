@@ -1,0 +1,11 @@
+# Aucun autoscaler : nombre de pods et ressources fixés par l'expérience
+# (E1 saturation d'un pod, E3 vertical vs horizontal à budget égal).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+# Labels sur les objets propres à l'overlay (HPA/VPA) : nécessaires au --prune du Makefile
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: lab-scaling-gke
+resources:
+  - ../../base

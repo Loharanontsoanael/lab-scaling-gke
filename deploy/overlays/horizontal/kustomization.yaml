@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+# Labels sur les objets propres à l'overlay (HPA/VPA) : nécessaires au --prune du Makefile
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: lab-scaling-gke
+resources:
+  - ../../base
+  - hpa.yaml
+  - vpa-recommender.yaml
+
+# Avec un HPA, le Deployment ne doit pas fixer `replicas` :
+# sinon chaque `kubectl apply` remettrait le nombre de pods à 3 en pleine charge.
+patches:
+  - target: { kind: Deployment, name: webapp }
+    patch: |-
+      - op: remove
+        path: /spec/replicas

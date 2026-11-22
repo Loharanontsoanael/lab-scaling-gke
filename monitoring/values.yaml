@@ -1,0 +1,32 @@
+# Valeurs pour le chart Helm kube-prometheus-stack (Prometheus + Grafana + kube-state-metrics)
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false   # prendre tous les ServiceMonitor
+    scrapeInterval: 10s
+    retention: 2d
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+
+grafana:
+  # Grafana n'est PAS exposé sur Internet : accès par `make grafana` (kubectl port-forward)
+  service:
+    type: ClusterIP
+  admin:
+    existingSecret: grafana-admin   # créé par le Makefile avec un mot de passe aléatoire
+    userKey: admin-user
+    passwordKey: admin-password
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+  defaultDashboardsTimezone: browser
+
+alertmanager:
+  enabled: false
+
+# GKE gère lui-même ces composants : inutile de les scraper (évite des alertes en erreur)
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeEtcd: { enabled: false }
+kubeProxy: { enabled: false }

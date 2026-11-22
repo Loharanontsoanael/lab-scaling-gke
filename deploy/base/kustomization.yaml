@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: webapp
+      app.kubernetes.io/part-of: lab-scaling-gke
+    includeSelectors: true
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+
+# Le tag est fixé au déploiement par : kustomize edit set image scaling-lab=<registre>/webapp:<sha>
+images:
+  - name: scaling-lab
+    newName: scaling-lab
+    newTag: dev

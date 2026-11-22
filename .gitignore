@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+results/
+monitoring/dashboard-configmap.yaml
+deploy/overlays/_current/
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/tfplan
+infra/terraform/terraform.tfvars

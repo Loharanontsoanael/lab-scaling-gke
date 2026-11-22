@@ -1,0 +1,29 @@
+# SCALING HORIZONTAL : ajoute/retire des pods selon le CPU.
+# Bonne pratique GKE : HPA sur CPU uniquement ; ne pas mettre un VPA actif sur la même métrique.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webapp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webapp
+  minReplicas: 3        # = haute dispo : 1 pod par nœud minimum
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }   # marge de 40 % pour absorber les pics
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Max
+      policies:
+        - { type: Percent, value: 100, periodSeconds: 15 }    # peut doubler toutes les 15 s
+        - { type: Pods, value: 4, periodSeconds: 15 }
+    scaleDown:
+      stabilizationWindowSeconds: 120                         # évite l'oscillation (flapping)
+      policies:
+        - { type: Percent, value: 50, periodSeconds: 30 }

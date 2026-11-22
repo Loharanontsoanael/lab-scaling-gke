@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }   # zéro coupure pendant les mises à jour
+  template:
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      # Haute dispo : au plus 1 pod d'écart entre nœuds
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: webapp }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: scaling-lab            # remplacé par Kustomize (images:)
+          ports:
+            - { name: http, containerPort: 8000 }
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - { name: ALLOW_CRASH, value: "1" }   # nécessaire aux expériences de chaos
+          # Base du scaling : le HPA calcule en % des requests, le scheduler place selon les requests
+          resources:
+            requests: { cpu: 250m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          # Redimensionnement à chaud (VPA InPlaceOrRecreate) sans redémarrer le conteneur
+          resizePolicy:
+            - { resourceName: cpu, restartPolicy: NotRequired }
+            - { resourceName: memory, restartPolicy: NotRequired }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:               # retire le pod du load balancer
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 3
+            failureThreshold: 2
+          livenessProbe:                # redémarre le conteneur s'il est bloqué
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5           # généreux : ne pas tuer un pod juste parce qu'il est chargé
+            failureThreshold: 6
+          lifecycle:
+            preStop:                    # laisse le temps au LB de retirer le pod avant SIGTERM
+              exec: { command: ["sleep", "10"] }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }

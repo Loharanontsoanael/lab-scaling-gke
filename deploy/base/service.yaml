@@ -1,0 +1,9 @@
+# Load balancer réseau GCP : une IP publique qui répartit le trafic entre les pods prêts
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp
+spec:
+  type: LoadBalancer
+  ports:
+    - { name: http, port: 80, targetPort: http }

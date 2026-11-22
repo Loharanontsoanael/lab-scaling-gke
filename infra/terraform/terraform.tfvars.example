@@ -1,0 +1,7 @@
+# Copier en terraform.tfvars et compléter
+project_id        = "ton-projet-gcp"
+github_repository = "Loharanontsoanael/lab-scaling-gke"
+
+# Facultatif : alerte budget (gcloud billing accounts list)
+# billing_account   = "XXXXXX-XXXXXX-XXXXXX"
+# budget_amount_eur = 20

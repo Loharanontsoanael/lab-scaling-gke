@@ -1,0 +1,79 @@
+# Déploiement continu vers GKE, SANS clé de compte de service :
+# GitHub fournit un jeton OIDC → Workload Identity Federation → jeton GCP de courte durée.
+# Déclenchement manuel (le cluster de lab est détruit entre les sessions pour ne pas payer).
+#
+# À configurer dans GitHub (Settings → Secrets and variables → Actions) :
+#   Variables : GCP_PROJECT_ID, GCP_REGION, GCP_ZONE, GKE_CLUSTER
+#   Secrets   : WIF_PROVIDER, DEPLOYER_SA   (sorties `terraform output`)
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      overlay:
+        description: Mode de scaling à déployer
+        type: choice
+        options: [horizontal, vertical, fixed]
+        default: horizontal
+
+permissions:
+  contents: read
+  id-token: write # nécessaire pour demander le jeton OIDC
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lab/webapp
+  TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build + push (tag immuable = SHA du commit)
+        run: |
+          gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+          docker build -t "$IMAGE:$TAG" app
+          docker push "$IMAGE:$TAG"
+
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GCP_ZONE }}
+
+      - name: Déploiement Kustomize
+        run: |
+          mkdir -p deploy/overlays/_current
+          cat > deploy/overlays/_current/kustomization.yaml <<EOF
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          resources: [../${{ inputs.overlay }}]
+          images:
+            - name: scaling-lab
+              newName: ${IMAGE}
+              newTag: "${TAG}"
+          EOF
+          kubectl apply -k deploy/overlays/_current \
+            --prune -l app.kubernetes.io/part-of=lab-scaling-gke \
+            --prune-allowlist=autoscaling/v2/HorizontalPodAutoscaler \
+            --prune-allowlist=autoscaling.k8s.io/v1/VerticalPodAutoscaler
+          kubectl -n lab rollout status deployment/webapp --timeout=300s
+
+      - name: Vérification
+        run: |
+          IP=$(kubectl -n lab get svc webapp -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl -fsS --retry 10 --retry-delay 5 --retry-all-errors "http://$IP/" | tee /dev/stderr
+          echo "### ✅ Déployé : http://$IP (overlay ${{ inputs.overlay }})" >> "$GITHUB_STEP_SUMMARY"

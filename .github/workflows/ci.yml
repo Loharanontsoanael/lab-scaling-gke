@@ -1,0 +1,79 @@
+# Intégration continue : rien n'arrive sur main sans lint, tests, validation des manifestes,
+# validation Terraform et scan de vulnérabilités de l'image.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Lint + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: app/requirements-dev.txt
+      - run: pip install -r app/requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+
+  manifests:
+    name: Manifestes Kubernetes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: kustomize build + kubeconform (schémas k8s + CRD HPA/VPA/ServiceMonitor)
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          for o in horizontal vertical fixed; do
+            echo "── overlay $o"
+            kubectl kustomize deploy/overlays/$o | ./kubeconform -strict -summary \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+          ./kubeconform -strict -summary \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            deploy/monitoring/servicemonitor.yaml
+
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
+
+  image:
+    name: Image Docker + scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t scaling-lab:ci app
+      - name: Test de fumée du conteneur (non-root, système de fichiers en lecture seule)
+        run: |
+          docker run -d --name app --read-only -p 8000:8000 scaling-lab:ci
+          for i in $(seq 20); do curl -fs localhost:8000/health && break; sleep 1; done
+          curl -fs "localhost:8000/cpu?ms=10"
+          docker logs app
+      - name: Scan de vulnérabilités (Trivy) — échoue sur CRITICAL corrigeable
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 \
+            image --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress scaling-lab:ci
