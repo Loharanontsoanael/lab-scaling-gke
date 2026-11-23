@@ -30,15 +30,23 @@ if ! curl -s -m2 -o /dev/null http://localhost:8089; then
 fi
 curl -s -m2 -o /dev/null http://localhost:8089 && ok "Locust prêt : http://localhost:8089" || ko "Locust ne démarre pas (voir /tmp/locust-jury.log)"
 
-echo "5) Ouverture des fenêtres…"
-firefox --new-tab "$URL" --new-tab http://localhost:8089 >/dev/null 2>&1 &
+echo "5) Panneau haute disponibilité sur http://localhost:8090…"
+if ! curl -s -m2 -o /dev/null http://localhost:8090/state; then
+  setsid nohup .venv/bin/python scripts/ha-panel.py >/tmp/ha-panel.log 2>&1 </dev/null &
+  for _ in $(seq 10); do curl -s -m1 -o /dev/null http://localhost:8090/state && break; sleep 1; done
+fi
+curl -s -m2 -o /dev/null http://localhost:8090/state && ok "Panneau HA prêt : http://localhost:8090" || ko "panneau HA (voir /tmp/ha-panel.log)"
+
+echo "6) Ouverture des fenêtres…"
+firefox --new-tab "$URL" --new-tab http://localhost:8090 --new-tab http://localhost:8089 >/dev/null 2>&1 &
 konsole --workdir "$PWD" -e bash -c 'export PATH=$HOME/.local/google-cloud-sdk/bin:$PATH; watch -n2 -t -c scripts/demo-watch.sh' >/dev/null 2>&1 &
 ok "Firefox (appli + Locust) et Konsole (vue live) ouverts"
 
 cat <<TXT
 
 🎯 Commandes de la démo (dans ce terminal) :
-   Panne d'un SERVEUR (haute dispo) : .venv/bin/python chaos/chaos.py vm --repeat 1
+   Panne d'un SERVEUR (haute dispo) : bouton « Couper ce serveur » sur http://localhost:8090
+                         (ou en terminal) : .venv/bin/python chaos/chaos.py vm --repeat 1
    Panne d'un pod                   : .venv/bin/python chaos/chaos.py pod --repeat 1
    Scaling vertical                 : make demo-vertical SIZE=small   puis SIZE=big
    Retour horizontal (HPA)          : make deploy OVERLAY=horizontal
