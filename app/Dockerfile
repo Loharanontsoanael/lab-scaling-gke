@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # --- Étape 1 : construire les dépendances dans un venv isolé ---
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -8,7 +8,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # --- Étape 2 : image finale minimale, sans outils de build ---
-FROM python:3.12-slim
+FROM python:3.15-slim
 LABEL org.opencontainers.image.title="scaling-lab" \
       org.opencontainers.image.description="API de test de charge et de scaling (M2 Grid & Cluster)"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH="/opt/venv/bin:$PATH"
