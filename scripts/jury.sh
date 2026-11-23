@@ -25,7 +25,7 @@ kubectl -n lab get pods --no-headers 2>/dev/null | awk '{print "     pod", $1, $
 
 echo "4) Locust (charge) sur http://localhost:8089…"
 if ! curl -s -m2 -o /dev/null http://localhost:8089; then
-  nohup .venv/bin/locust -f loadtest/locustfile.py --host "$URL" --web-port 8089 >/tmp/locust-jury.log 2>&1 &
+  setsid nohup .venv/bin/locust -f loadtest/locustfile.py --host "$URL" --web-port 8089 >/tmp/locust-jury.log 2>&1 &
   for _ in $(seq 15); do curl -s -m1 -o /dev/null http://localhost:8089 && break; sleep 1; done
 fi
 curl -s -m2 -o /dev/null http://localhost:8089 && ok "Locust prêt : http://localhost:8089" || ko "Locust ne démarre pas (voir /tmp/locust-jury.log)"
