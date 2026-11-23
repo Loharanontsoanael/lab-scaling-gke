@@ -290,6 +290,7 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border-
       <a href="#proof"><svg class="i"><use href="#i-cloud"/></svg>Hébergement</a>
       <a href="#load"><svg class="i"><use href="#i-gauge"/></svg>Générateur de charge</a>
       <a href="#chaos"><svg class="i"><use href="#i-bolt"/></svg>Chaos</a>
+      <a href="http://localhost:8090" target="_blank" rel="noopener"><svg class="i"><use href="#i-net"/></svg>Haute disponibilité</a>
       <a href="#events"><svg class="i"><use href="#i-list"/></svg>Événements</a>
     </nav>
     <div class="rail-foot">
@@ -425,6 +426,9 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border-
             <select id="crashTarget"><option value="">Au hasard</option></select>
             <button class="btn danger block" id="crashBtn"><svg class="i"><use href="#i-bolt"/></svg>Crasher ce pod</button>
             <div class="note" id="crashInfo" style="margin:8px 0 0"></div>
+            <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+            <p class="note">Haute disponibilité : coupe brutalement un <b>serveur entier</b> (VM GKE) et mesure la disponibilité et le temps de rétablissement.</p>
+            <a class="btn danger block" href="http://localhost:8090" target="_blank" rel="noopener" style="text-decoration:none"><svg class="i"><use href="#i-net"/></svg>Panne d'un serveur</a>
           </div>
         </section>
 

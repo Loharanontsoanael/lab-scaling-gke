@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haute disponibilité</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231fc8a0'/%3E%3Cpath d='M16 6l8 3v6c0 5-3.4 9-8 11-4.6-2-8-6-8-11V9z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --surface: #11161d; --surface-2: #171d26; --surface-3: #1e2530;
+  --border: #222a35; --border-2: #2d3643;
+  --text: #edf1f5; --text-2: #aab4c0; --muted: #6f7a87;
+  --accent: #1fc8a0; --accent-soft: rgba(31,200,160,.12);
+  --good: #3fb950; --warn: #d29922; --crit: #e66767;
+  --good-soft: rgba(63,185,80,.14); --warn-soft: rgba(210,153,34,.14); --crit-soft: rgba(230,103,103,.14);
+  --grid: #1a212b;
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.25);
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f7fa; --surface: #ffffff; --surface-2: #f3f5f8; --surface-3: #e9edf2;
+  --border: #e3e7ec; --border-2: #d3d9e0;
+  --text: #0e1621; --text-2: #4b5664; --muted: #737e8b;
+  --accent: #0e9f7e; --accent-soft: rgba(14,159,126,.10);
+  --good: #1a7f37; --warn: #9a6700; --crit: #cf222e;
+  --good-soft: rgba(26,127,55,.10); --warn-soft: rgba(154,103,0,.10); --crit-soft: rgba(207,34,46,.09);
+  --grid: #eef1f4;
+  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 4px 12px rgba(16,24,40,.04);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+.top { position: sticky; top: 0; z-index: 10; height: 58px; display: flex; align-items: center; gap: 12px; padding: 0 28px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.mark { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(140deg, var(--accent), #2a78d6); display: grid; place-items: center; }
+.mark svg { width: 18px; height: 18px; fill: #fff; }
+.crumbs { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.crumbs b { color: var(--text); font-weight: 600; }
+.env { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.pill { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); white-space: nowrap; }
+.pill a { color: inherit; font-family: var(--mono); text-decoration: none; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+.dot.good { background: var(--good); animation: ping 2s infinite; } .dot.warn { background: var(--warn); } .dot.crit { background: var(--crit); animation: pingc 1s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 55%, transparent); } 80%,100% { box-shadow: 0 0 0 7px transparent; } }
+@keyframes pingc { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--crit) 60%, transparent); } 80%,100% { box-shadow: 0 0 0 8px transparent; } }
+.icon-btn { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer; }
+
+.page { padding: 26px 28px 48px; max-width: 1400px; margin: 0 auto; display: grid; gap: 20px; }
+.head h1 { margin: 0; font-size: 24px; letter-spacing: -.5px; }
+.head p { margin: 4px 0 0; color: var(--text-2); max-width: 780px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); min-width: 0; }
+.card-h { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.card-h h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.card-h .desc { color: var(--muted); font-size: 12.5px; }
+.card-h .meta { margin-left: auto; color: var(--muted); font-size: 12px; display: flex; gap: 14px; align-items: center; }
+.card-b { padding: 16px 18px; }
+
+/* bandeau d'état */
+.banner { display: grid; grid-template-columns: auto 1fr repeat(4, minmax(120px, auto)); gap: 24px; align-items: center; padding: 18px 22px; }
+.state { display: flex; align-items: center; gap: 14px; }
+.state .ring { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: var(--good-soft); color: var(--good); }
+.state .ring svg { width: 26px; height: 26px; stroke-width: 2.2; }
+.state.bad .ring { background: var(--crit-soft); color: var(--crit); }
+.state.warn .ring { background: var(--warn-soft); color: var(--warn); }
+.state .big { font-size: 22px; font-weight: 700; letter-spacing: -.4px; line-height: 1.15; }
+.state .small { color: var(--text-2); font-size: 13px; }
+.stat .label { font-size: 12px; color: var(--muted); font-weight: 500; }
+.stat .value { font-size: 24px; font-weight: 650; letter-spacing: -.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat .unit { font-size: 13px; color: var(--muted); margin-left: 2px; font-weight: 500; }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+
+/* serveurs */
+.nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.node { border: 1px solid var(--border); border-radius: 11px; padding: 14px; background: var(--surface-2); transition: border-color .3s, background .3s; }
+.node.down { border-color: color-mix(in srgb, var(--crit) 55%, transparent); background: var(--crit-soft); }
+.node.new { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.node-h { display: flex; align-items: center; gap: 10px; }
+.node-ic { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: var(--surface-3); color: var(--text-2); }
+.node.down .node-ic { color: var(--crit); }
+.node-n { font-weight: 600; } .node-s { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.badge { margin-left: auto; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--good-soft); color: var(--good); white-space: nowrap; }
+.badge.crit { background: var(--crit-soft); color: var(--crit); }
+.pods { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 14px; min-height: 28px; }
+.pod { display: inline-flex; align-items: center; gap: 6px; font: 12px var(--mono); padding: 4px 9px; border-radius: 7px; background: var(--surface); border: 1px solid var(--border); }
+.pod .dot { width: 7px; height: 7px; }
+.pod.nr { color: var(--warn); } .pod.del { color: var(--crit); text-decoration: line-through; opacity: .75; }
+.empty { color: var(--muted); font-size: 12.5px; padding: 4px 0; }
+.btn-kill { width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, var(--crit) 45%, transparent);
+  background: var(--crit-soft); color: var(--crit); font: 600 13px var(--sans); padding: 9px; border-radius: 8px; cursor: pointer; transition: background .15s; }
+.btn-kill:hover:not(:disabled) { background: var(--crit); color: #fff; }
+.btn-kill:disabled { opacity: .35; cursor: not-allowed; }
+
+/* chronologie */
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps li { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; padding: 0 0 18px; position: relative; }
+.steps li:not(:last-child)::before { content: ""; position: absolute; left: 13px; top: 28px; bottom: 2px; width: 2px; background: var(--border); }
+.steps li.done:not(:last-child)::before { background: color-mix(in srgb, var(--good) 50%, transparent); }
+.steps .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--surface-3); color: var(--muted); }
+.steps li.done .n { background: var(--good-soft); color: var(--good); }
+.steps li.now .n { background: var(--warn-soft); color: var(--warn); animation: pingw 1.2s infinite; }
+@keyframes pingw { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 55%, transparent); } 80%,100% { box-shadow: 0 0 0 7px transparent; } }
+.steps .t { font-weight: 600; } .steps .d { color: var(--muted); font-size: 12.5px; }
+.steps .time { font: 600 13px var(--mono); color: var(--text-2); white-space: nowrap; padding-top: 4px; }
+.steps li.pending .t { color: var(--muted); }
+
+/* graphique */
+.chart { width: 100%; height: 190px; display: block; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+
+/* événements */
+.events { max-height: 260px; overflow: auto; }
+.ev { display: grid; grid-template-columns: 70px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.ev:last-child { border-bottom: 0; }
+.ev time { font: 12px var(--mono); color: var(--muted); padding-top: 1px; }
+
+/* fenêtre de confirmation */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; place-items: center; z-index: 50; padding: 16px; }
+.modal.open { display: grid; }
+.dialog { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+.dialog h3 { margin: 0 0 6px; font-size: 18px; } .dialog p { margin: 0 0 18px; color: var(--text-2); }
+.dialog code { font-family: var(--mono); background: var(--surface-2); padding: 1px 6px; border-radius: 5px; }
+.dialog .row { display: flex; gap: 10px; justify-content: flex-end; }
+.btn { font: 600 13px var(--sans); padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text); cursor: pointer; }
+.btn.danger { background: var(--crit); border-color: var(--crit); color: #fff; }
+
+@media (max-width: 1100px) { .banner { grid-template-columns: 1fr 1fr; } .banner .spacer { display: none; } .grid2 { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .top, .page { padding-left: 16px; padding-right: 16px; } .top .crumbs span:not(:first-child) { display: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="mark"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5.2-3.4 9.4-8 11-4.6-1.6-8-5.8-8-11V5z"/></svg></div>
+  <div class="crumbs"><b><a id="home" href="#" style="color:inherit;text-decoration:none">Projet GCP</a></b><span class="sep">/</span><span>Haute disponibilité</span><span class="env">GKE · europe-west1</span></div>
+  <div class="top-right">
+    <span class="pill"><span class="dot" id="sonde-dot"></span><span id="sonde">Sonde : connexion…</span></span>
+    <span class="pill">Site <a id="site" href="#" target="_blank">—</a></span>
+    <button class="icon-btn" id="theme" title="Changer de thème"><svg class="i" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  </div>
+</header>
+
+<main class="page">
+  <div class="head">
+    <h1>Panne d'un serveur du cluster</h1>
+    <p>On coupe brutalement une machine virtuelle GKE pendant que 10 clients interrogent le site chaque seconde. Kubernetes doit continuer à servir le trafic avec le serveur restant, recréer les pods perdus, puis GKE recrée la machine.</p>
+  </div>
+
+  <section class="card banner">
+    <div class="state" id="state">
+      <div class="ring" id="ring"></div>
+      <div><div class="big" id="state-t">Connexion…</div><div class="small" id="state-d">&nbsp;</div></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="stat"><div class="label">Disponibilité (panne)</div><div class="value" id="k-av">—</div></div>
+    <div class="stat"><div class="label">Requêtes en échec</div><div class="value" id="k-err">—</div></div>
+    <div class="stat"><div class="label">Pods rétablis (MTTR)</div><div class="value" id="k-pods">—</div></div>
+    <div class="stat"><div class="label">Serveur recréé</div><div class="value" id="k-node">—</div></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <div class="card-h"><h2>Serveurs du cluster</h2><span class="desc">nœuds GKE et pods de l'application</span><span class="meta" id="pods-meta"></span></div>
+      <div class="card-b"><div class="nodes" id="nodes"></div></div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Déroulement de la panne</h2><span class="meta" id="elapsed"></span></div>
+      <div class="card-b"><ol class="steps" id="steps"></ol></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-h"><h2>Requêtes des clients</h2><span class="desc">par seconde, 90 dernières secondes</span>
+      <span class="meta legend"><span><i class="sw" style="background:var(--good)"></i>réussies</span><span><i class="sw" style="background:var(--crit)"></i>en échec</span><span><i class="sw" style="background:var(--warn)"></i>panne injectée</span></span></div>
+    <div class="card-b"><svg class="chart" id="chart" preserveAspectRatio="none"></svg></div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2>Journal</h2></div>
+    <div class="card-b events" id="events"></div>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="dialog">
+    <h3>Couper ce serveur ?</h3>
+    <p>La machine virtuelle <code id="m-node"></code> va être <b>supprimée brutalement</b>, comme une vraie panne matérielle. Ses pods disparaissent avec elle.</p>
+    <div class="row"><button class="btn" id="m-cancel">Annuler</button><button class="btn danger" id="m-ok">💥 Couper le serveur</button></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const hhmmss = (t) => new Date(t * 1000).toLocaleTimeString("fr-FR");
+const dur = (s) => s == null ? "—" : s < 60 ? `${Math.round(s)}<span class="unit">s</span>` : `${Math.floor(s / 60)}<span class="unit">min</span> ${String(Math.round(s % 60)).padStart(2, "0")}<span class="unit">s</span>`;
+const short = (n) => n.split("-").pop();
+const ICON = {
+  ok: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  ko: '<svg class="i" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><path d="M10.3 3.9L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+  wait: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  srv: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
+};
+
+// thème
+try { const t = localStorage.getItem("ha-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("theme").onclick = () => {
+  const t = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("ha-theme", t); } catch (e) {}
+};
+
+// confirmation
+let target = null;
+function ask(node) { target = node; $("m-node").textContent = node; $("modal").classList.add("open"); }
+$("m-cancel").onclick = () => $("modal").classList.remove("open");
+$("modal").onclick = (e) => { if (e.target.id === "modal") $("modal").classList.remove("open"); };
+$("m-ok").onclick = async () => {
+  $("modal").classList.remove("open");
+  const r = await fetch("/kill/" + encodeURIComponent(target), { method: "POST" });
+  const j = await r.json();
+  if (j.result !== "ok") alert(j.result);
+  tick();
+};
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-kill]"); if (b && !b.disabled) ask(b.dataset.kill); });
+
+const seen = new Set();
+function render(s) {
+  const inc = s.incident || {};
+  const busy = inc.t && !inc.done;
+  const last = s.seconds[s.seconds.length - 1];
+  const failing = last && last[2] > 0;
+
+  // en-tête
+  if (s.url) { $("home").href = s.url; $("site").textContent = s.url.replace("http://", "").replace(/\/$/, ""); $("site").href = s.url; }
+  $("sonde-dot").className = "dot " + (last ? (failing ? "crit" : "good") : "");
+  $("sonde").textContent = last ? `Sonde : ${last[1] + last[2]} req/s` : "Sonde : démarrage…";
+
+  // bandeau d'état
+  const st = $("state");
+  if (!last) { st.className = "state warn"; $("ring").innerHTML = ICON.wait; $("state-t").textContent = "Démarrage de la sonde…"; }
+  else if (failing) { st.className = "state bad"; $("ring").innerHTML = ICON.ko; $("state-t").textContent = "Des requêtes échouent"; $("state-d").textContent = `${last[2]} échec(s) sur ${last[1] + last[2]} à la dernière seconde`; }
+  else if (busy) { st.className = "state warn"; $("ring").innerHTML = ICON.ok; $("state-t").textContent = "Site en ligne — panne en cours"; $("state-d").textContent = "le trafic est servi par les serveurs restants"; }
+  else { st.className = "state"; $("ring").innerHTML = ICON.ok; $("state-t").textContent = "Site en ligne"; $("state-d").textContent = `${s.available}/${s.desired} pods disponibles · ${s.nodes.filter((n) => n.ready).length} serveurs`; }
+
+  // mesures
+  if (inc.t) {
+    $("k-av").innerHTML = inc.availability == null ? "—" : `${inc.availability.toFixed(2)}<span class="unit">%</span>`;
+    $("k-err").innerHTML = `${inc.ko || 0}<span class="unit">/ ${(inc.ok || 0) + (inc.ko || 0)}</span>`;
+    $("k-pods").innerHTML = inc.pods_ok ? dur(inc.pods_ok - inc.t) : '<span class="unit">en cours…</span>';
+    $("k-node").innerHTML = inc.node_back ? dur(inc.node_back - inc.t) : inc.node_lost ? '<span class="unit">en cours…</span>' : "—";
+  }
+
+  // serveurs
+  $("pods-meta").textContent = `${s.available}/${s.desired} pods prêts`;
+  $("nodes").innerHTML = s.nodes.map((n) => {
+    const pods = s.pods.filter((p) => p.node === n.name);
+    const isNew = inc.node_lost && inc.t && Date.parse(n.age) / 1000 > inc.t;
+    return `<div class="node ${n.ready ? (isNew ? "new" : "") : "down"}">
+      <div class="node-h"><div class="node-ic">${ICON.srv}</div>
+        <div><div class="node-n">Serveur ${esc(short(n.name))}</div><div class="node-s">e2-standard-2${isNew ? " · recréé" : ""}</div></div>
+        <span class="badge ${n.ready ? "" : "crit"}">${n.ready ? "en ligne" : "hors ligne"}</span></div>
+      <div class="pods">${pods.map((p) => `<span class="pod ${p.deleting ? "del" : p.ready ? "" : "nr"}"><span class="dot ${p.deleting ? "crit" : p.ready ? "good" : "warn"}"></span>${esc(short(p.name))}</span>`).join("") || '<span class="empty">aucun pod</span>'}</div>
+      <button class="btn-kill" data-kill="${esc(n.name)}" ${busy || !n.ready ? "disabled" : ""}>💥 Couper ce serveur</button>
+    </div>`;
+  }).join("") || '<div class="empty">Connexion au cluster…</div>';
+
+  // chronologie
+  const steps = [
+    ["Panne injectée", "suppression brutale de la machine virtuelle", inc.t],
+    ["Panne détectée", "Kubernetes marque le serveur hors ligne", inc.node_lost],
+    ["Pods rétablis", "recréés sur le serveur restant, trafic normal", inc.pods_ok],
+    ["Serveur recréé", "GKE remplace la machine (auto-réparation)", inc.node_back],
+  ];
+  let firstPending = true;
+  $("steps").innerHTML = steps.map(([t, d, at], i) => {
+    let cls = "pending";
+    if (at) cls = "done"; else if (inc.t && firstPending) { cls = "now"; firstPending = false; }
+    return `<li class="${cls}"><span class="n">${at ? "✓" : i + 1}</span><div><div class="t">${t}</div><div class="d">${d}</div></div><span class="time">${at ? "+" + Math.round(at - inc.t) + " s" : ""}</span></li>`;
+  }).join("");
+  $("elapsed").innerHTML = inc.t ? (inc.done ? "terminée" : `depuis ${Math.round(inc.elapsed)} s`) : "aucune panne pour l'instant";
+
+  drawChart(s.seconds, inc.t);
+
+  // journal
+  $("events").innerHTML = s.events.slice().reverse().map((e) => `<div class="ev"><time>${hhmmss(e.t)}</time><span>${esc(e.msg)}</span></div>`).join("");
+}
+
+function drawChart(sec, tInj) {
+  const svg = $("chart"), W = svg.clientWidth || 800, H = 190, pad = 22, N = 90;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const max = Math.max(12, ...sec.map((x) => x[1] + x[2]));
+  const bw = (W - pad) / N, y = (v) => (H - 18) * (1 - v / max);
+  const start = sec.length ? sec[sec.length - 1][0] - N + 1 : 0;
+  let g = "";
+  for (const v of [0, 5, 10]) if (v <= max) g += `<line x1="${pad}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="0" y="${y(v) + 4}" font-size="10" fill="var(--muted)" font-family="var(--mono)">${v}</text>`;
+  for (const [t, ok, ko] of sec) {
+    const x = pad + (t - start) * bw;
+    if (ok) g += `<rect x="${x + 1}" y="${y(ok)}" width="${Math.max(1, bw - 2)}" height="${H - 18 - y(ok)}" rx="1.5" fill="var(--good)"><title>${hhmmss(t)} : ${ok} réussies</title></rect>`;
+    if (ko) g += `<rect x="${x + 1}" y="${y(ok + ko)}" width="${Math.max(1, bw - 2)}" height="${y(ok) - y(ok + ko)}" rx="1.5" fill="var(--crit)"><title>${hhmmss(t)} : ${ko} en échec</title></rect>`;
+  }
+  if (tInj && tInj >= start) {
+    const x = pad + (tInj - start) * bw;
+    g += `<line x1="${x}" x2="${x}" y1="0" y2="${H - 18}" stroke="var(--warn)" stroke-width="2" stroke-dasharray="4 3"/><text x="${x + 5}" y="12" font-size="11" fill="var(--warn)" font-weight="600">panne</text>`;
+  }
+  g += `<text x="${pad}" y="${H - 2}" font-size="10" fill="var(--muted)" font-family="var(--mono)">−90 s</text><text x="${W}" y="${H - 2}" font-size="10" fill="var(--muted)" text-anchor="end" font-family="var(--mono)">maintenant</text>`;
+  svg.innerHTML = g;
+}
+
+async function tick() {
+  try { render(await (await fetch("/state", { cache: "no-store" })).json()); }
+  catch (e) { $("state").className = "state bad"; $("ring").innerHTML = ICON.ko; $("state-t").textContent = "Panneau déconnecté"; $("state-d").textContent = "relancer scripts/jury.sh"; }
+}
+setInterval(tick, 1000); tick();
+</script>
+</body>
+</html>

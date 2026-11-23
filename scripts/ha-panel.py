@@ -164,8 +164,8 @@ def snapshot() -> dict:
             inc["elapsed"] = time.time() - inc["t"]
         return {
             **state,
-            "seconds": list(seconds)[-60:],
-            "events": events[-12:],
+            "seconds": list(seconds)[-90:],
+            "events": events[-14:],
             "incident": inc,
             "now": time.time(),
         }
@@ -186,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/state"):
             self._send(200, json.dumps(snapshot()).encode(), "application/json")
         else:
-            self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+            self._send(200, PAGE_FILE.read_bytes(), "text/html; charset=utf-8")
 
     def do_POST(self):
         if self.path.startswith("/kill/"):
@@ -196,62 +196,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"{}", "application/json")
 
 
-PAGE = r"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Haute disponibilité</title>
-<style>
-:root{--bg:#0f1420;--card:#18202f;--line:#2a3448;--fg:#e8edf6;--mut:#93a0b8;--good:#34c47c;--bad:#ef5b5b;--warn:#f0b43c;--acc:#5b8def}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif}
-header{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-h1{font-size:20px;margin:0}.sub{color:var(--mut)}main{padding:20px 24px;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}.card h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 12px}
-.wide{grid-column:1/-1}.node{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
-.node.down{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent)}
-.nh{display:flex;justify-content:space-between;align-items:center;gap:8px}.nn{font-weight:600}
-.pill{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--line)}.ok{color:var(--good)}.ko{color:var(--bad)}
-.pods{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pod{font-size:12px;padding:3px 8px;border-radius:6px;background:color-mix(in srgb,var(--good) 22%,transparent)}
-.pod.nr{background:color-mix(in srgb,var(--warn) 25%,transparent)}.pod.del{background:color-mix(in srgb,var(--bad) 25%,transparent);text-decoration:line-through}
-button{background:var(--bad);color:#fff;border:0;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer}button:disabled{opacity:.35;cursor:default}
-.bars{display:flex;align-items:flex-end;gap:2px;height:120px}.bar{flex:1;display:flex;flex-direction:column-reverse;min-width:3px}
-.bar i{display:block}.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.kpi{background:var(--bg);border-radius:10px;padding:10px}
-.kpi b{display:block;font-size:26px}.kpi span{color:var(--mut);font-size:13px}#ev div{padding:4px 0;border-bottom:1px solid var(--line)}#ev time{color:var(--mut);margin-right:8px}
-.big{font-size:42px;font-weight:700}
-</style></head><body>
-<header><div><h1>🛡️ Haute disponibilité — panne d'un serveur GKE</h1><div class="sub" id="url">connexion au cluster…</div></div>
-<div style="margin-left:auto;text-align:right"><div class="sub">Site vu par les clients</div><div class="big" id="live">…</div></div></header>
-<main>
-<section class="card"><h2>Serveurs du cluster (nœuds GKE) et leurs pods</h2><div id="nodes"></div></section>
-<section class="card"><h2>Mesures de la panne</h2><div class="kpis">
-<div class="kpi"><b id="k-av">—</b><span>disponibilité pendant la panne</span></div>
-<div class="kpi"><b id="k-err">—</b><span>requêtes en échec</span></div>
-<div class="kpi"><b id="k-pods">—</b><span>pods rétablis après (MTTR)</span></div>
-<div class="kpi"><b id="k-node">—</b><span>serveur recréé par GKE après</span></div></div>
-<p class="sub" style="margin-bottom:0">Sonde : 10 requêtes/s vers le site, chacune sur une nouvelle connexion (comme 10 clients différents).</p></section>
-<section class="card wide"><h2>Requêtes par seconde (60 dernières s) — <span class="ok">■ réussies</span> <span class="ko">■ échouées</span></h2><div class="bars" id="bars"></div></section>
-<section class="card wide"><h2>Événements</h2><div id="ev" class="sub">—</div></section>
-</main>
-<script>
-const $=id=>document.getElementById(id), fmt=s=>s==null?"—":Math.round(s)+" s";
-const tm=t=>new Date(t*1000).toLocaleTimeString("fr-FR");
-async function kill(n){if(!confirm("Couper brutalement le serveur "+n+" ?"))return;
- const r=await fetch("/kill/"+n,{method:"POST"});const j=await r.json();if(j.result!=="ok")alert(j.result);}
-async function tick(){let s;try{s=await (await fetch("/state")).json()}catch(e){return}
- $("url").textContent="Site : "+(s.url||"?")+"   ·   "+s.available+"/"+s.desired+" pods disponibles";
- const busy=s.incident.t&&!s.incident.done;
- $("nodes").innerHTML=s.nodes.map(n=>{const pods=s.pods.filter(p=>p.node===n.name);
-  return `<div class="node ${n.ready?"":"down"}"><div class="nh"><span class="nn">🖥️ ${n.name.slice(-4)} <span class="pill ${n.ready?"ok":"ko"}">${n.ready?"en ligne":"HORS LIGNE"}</span></span>
-  <button ${busy||!n.ready?"disabled":""} onclick="kill('${n.name}')">💥 Couper ce serveur</button></div>
-  <div class="pods">${pods.map(p=>`<span class="pod ${p.deleting?"del":p.ready?"":"nr"}">${p.name.slice(-5)}</span>`).join("")||'<span class="sub">aucun pod</span>'}</div></div>`}).join("");
- const last=s.seconds[s.seconds.length-1];
- if(last){const up=last[2]===0;$("live").innerHTML=up?'<span class="ok">✔ EN LIGNE</span>':'<span class="ko">✘ ERREURS</span>';}
- $("bars").innerHTML=s.seconds.map(x=>`<div class="bar" title="${tm(x[0])} : ${x[1]} ok, ${x[2]} échecs"><i style="height:${x[1]*11}px;background:var(--good)"></i><i style="height:${x[2]*11}px;background:var(--bad)"></i></div>`).join("");
- const i=s.incident;
- if(i.t){$("k-av").textContent=i.availability==null?"—":i.availability.toFixed(2)+" %";
-  $("k-err").textContent=(i.ko||0)+" / "+((i.ok||0)+(i.ko||0));
-  $("k-pods").textContent=i.pods_ok?fmt(i.pods_ok-i.t):"en cours… "+fmt(i.elapsed);
-  $("k-node").textContent=i.node_back?fmt(i.node_back-i.t):(i.node_lost?"en cours…":"—");}
- $("ev").innerHTML=s.events.slice().reverse().map(e=>`<div><time>${tm(e.t)}</time>${e.msg}</div>`).join("")||"—";}
-setInterval(tick,1000);tick();
-</script></body></html>"""
+PAGE_FILE = Path(__file__).with_name("ha-panel.html")
 
 
 if __name__ == "__main__":
