@@ -32,3 +32,19 @@ spec:
     - ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
+---
+# …et le serveur de métadonnées GCP (projet, zone, cluster affichés par le tableau de bord).
+# Avec Workload Identity, 169.254.169.254:80 est servi par gke-metadata-server sur le nœud (169.254.169.252:988).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webapp-allow-gcp-metadata
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: webapp }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ ipBlock: { cidr: 169.254.169.254/32 } }]
+      ports: [{ protocol: TCP, port: 80 }]
+    - to: [{ ipBlock: { cidr: 169.254.169.252/32 } }]
+      ports: [{ protocol: TCP, port: 988 }]

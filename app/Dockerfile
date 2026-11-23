@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.title="scaling-lab" \
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH="/opt/venv/bin:$PATH"
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
-COPY main.py .
+COPY main.py ui.html ./
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin appuser
 USER 10001
 EXPOSE 8000

@@ -75,7 +75,7 @@ variable "billing_account" {
 }
 
 variable "budget_amount_eur" {
-  description = "Montant mensuel de l'alerte budget"
+  description = "Montant mensuel de l'alerte budget, dans la devise du compte de facturation"
   type        = number
   default     = 20
 }

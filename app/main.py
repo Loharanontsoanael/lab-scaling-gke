@@ -1,12 +1,14 @@
-"""Scaling Lab — petite API pour tester la charge, le scaling et la haute disponibilité.
+"""Projet GCP — petite API pour tester la charge, le scaling et la haute disponibilité.
 
 Endpoints :
-  GET /                        -> qui m'a répondu ? (pod + nœud)
+  GET /                        -> qui m'a répondu ? (pod + nœud) ; un navigateur reçoit le tableau de bord
+  GET /ui                      -> tableau de bord web (charge, latence, répartition, chaos)
+  GET /info                    -> version, limites et preuve d'hébergement GCP (serveur de métadonnées)
   GET /health                  -> sonde liveness (le processus est vivant)
   GET /ready                   -> sonde readiness (prêt à recevoir du trafic ; faux pendant l'arrêt)
   GET /cpu?ms=100              -> consomme du CPU pendant `ms` millisecondes
   GET /memory?mb=50&seconds=2  -> alloue `mb` Mo de RAM pendant `seconds` secondes
-  GET /crash                   -> tue le processus (démo d'auto-réparation), si ALLOW_CRASH=1
+  GET /crash[?pod=nom]         -> tue le processus (démo d'auto-réparation), si ALLOW_CRASH=1
   GET /metrics                 -> métriques Prometheus
 
 Configuration (variables d'environnement, principe 12-factor) :
@@ -22,10 +24,13 @@ import signal
 import socket
 import threading
 import time
+import urllib.request
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse
 from prometheus_client import Gauge
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -64,8 +69,48 @@ def _on_sigterm(signum, frame):  # pragma: no cover - testé en conditions réel
 _previous_sigterm = None
 
 
+# --- Preuve d'hébergement : serveur de métadonnées GCP (joignable uniquement depuis Google Cloud) ---
+METADATA_URL = os.getenv("GCP_METADATA_URL", "http://169.254.169.254/computeMetadata/v1/")
+_METADATA_KEYS = {
+    "project_id": "project/project-id",
+    "zone": "instance/zone",
+    "cluster": "instance/attributes/cluster-name",
+    "cluster_location": "instance/attributes/cluster-location",
+    "machine_type": "instance/machine-type",
+    "instance": "instance/hostname",
+}
+_gcp: dict[str, str] = {}
+
+
+def _metadata(path: str, timeout: float) -> str | None:
+    req = urllib.request.Request(METADATA_URL + path, headers={"Metadata-Flavor": "Google"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - URL fixe (lien local GCP)
+            if r.headers.get("Metadata-Flavor") != "Google":
+                return None
+            return r.read(256).decode().strip().rsplit("/", 1)[-1] or None  # zones/xx -> xx
+    except Exception:  # noqa: BLE001 - hors GCP : pas de métadonnées, c'est normal
+        return None
+
+
+def load_gcp_metadata(timeout: float = 0.5) -> dict[str, str]:
+    """Lit projet, zone, cluster… Vide hors de Google Cloud (le premier appel échoue vite)."""
+    if _metadata("project/project-id", timeout) is None:
+        return {}
+    found = {k: v for k, path in _METADATA_KEYS.items() if (v := _metadata(path, timeout))}
+    if "instance" in found:
+        found["instance"] = found["instance"].split(".")[0]
+    return found
+
+
+def _load_gcp_in_background():
+    _gcp.update(load_gcp_metadata())
+    log.info("hébergement : %s", f"Google Cloud, projet {_gcp['project_id']}" if _gcp else "hors GCP")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    threading.Thread(target=_load_gcp_in_background, daemon=True).start()
     global _previous_sigterm
     if threading.current_thread() is threading.main_thread():
         _previous_sigterm = signal.getsignal(signal.SIGTERM)
@@ -75,12 +120,55 @@ async def lifespan(_app: FastAPI):
     log.info("arrêt terminé")
 
 
-app = FastAPI(title="Scaling Lab", version="1.1.0", lifespan=lifespan)
-Instrumentator(excluded_handlers=["/metrics", "/health", "/ready"]).instrument(app).expose(app, include_in_schema=False)
+VERSION = "1.2.0"
+UI_HTML = (Path(__file__).with_name("ui.html")).read_text(encoding="utf-8")
+
+app = FastAPI(title="Projet GCP", version=VERSION, lifespan=lifespan)
+Instrumentator(excluded_handlers=["/metrics", "/health", "/ready", "/ui", "/info"]).instrument(app).expose(
+    app, include_in_schema=False
+)
+
+
+@app.middleware("http")
+async def identify_pod(request: Request, call_next):
+    """Chaque réponse dit quel pod l'a servie (lu par le tableau de bord pour toutes les routes).
+    `X-Lab-Fresh` : on ferme la connexion après la réponse, sinon le keep-alive du navigateur
+    collerait toutes ses requêtes au même pod (le Service répartit par connexion TCP, pas par requête)."""
+    response = await call_next(request)
+    response.headers["X-Pod"] = settings.pod
+    response.headers["X-Node"] = settings.node
+    response.headers["X-Uptime"] = f"{time.time() - _state['started_at']:.1f}"
+    if request.headers.get("x-lab-fresh"):
+        response.headers["Connection"] = "close"
+    return response
+
+
+def _wants_html(request: Request) -> bool:
+    return "text/html" in request.headers.get("accept", "")
+
+
+@app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
+def ui():
+    return HTMLResponse(UI_HTML, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/info")
+def info():
+    return {
+        "version": VERSION,
+        "allow_crash": settings.allow_crash,
+        "max_cpu_ms": settings.max_cpu_ms,
+        "max_memory_mb": settings.max_memory_mb,
+        "pod": settings.pod,
+        "node": settings.node,
+        "gcp": dict(_gcp),
+    }
 
 
 @app.get("/")
-def root():
+def root(request: Request):
+    if _wants_html(request):
+        return ui()
     return {
         "message": "Bonjour depuis le cluster !",
         "pod": settings.pod,
@@ -143,9 +231,13 @@ def memory(mb: int = Query(50, ge=1), seconds: float = Query(2, ge=0, le=60)):
 
 
 @app.get("/crash")
-def crash():
+def crash(pod: str | None = Query(None, description="Ne crasher que si ce pod reçoit la requête")):
+    """Sans `pod` : le pod qui reçoit la requête s'arrête. Avec `pod` : seul ce pod accepte ;
+    les autres répondent 409 et le client réessaie (le Service choisit le pod au hasard)."""
     if not settings.allow_crash:
         raise HTTPException(403, "Crash désactivé (ALLOW_CRASH=0)")
+    if pod and pod != settings.pod:
+        raise HTTPException(409, f"Requête reçue par {settings.pod}, pas par {pod}")
     log.warning("crash volontaire demandé")
     threading.Timer(0.2, lambda: os._exit(1)).start()
     return {"pod": settings.pod, "message": "Ce pod va s'arrêter dans 0,2 s"}

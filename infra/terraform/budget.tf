@@ -11,9 +11,9 @@ resource "google_billing_budget" "lab" {
   }
 
   amount {
+    # Sans currency_code : la devise du compte de facturation (EUR, USD…) est utilisée.
     specified_amount {
-      currency_code = "EUR"
-      units         = tostring(var.budget_amount_eur)
+      units = tostring(var.budget_amount_eur)
     }
   }
 
