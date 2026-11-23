@@ -77,6 +77,13 @@ svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-widt
 .stat .value { font-size: 24px; font-weight: 650; letter-spacing: -.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stat .unit { font-size: 13px; color: var(--muted); margin-left: 2px; font-weight: 500; }
 
+.guide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.g { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border: 1px dashed var(--border-2); border-radius: 12px; color: var(--text-2); }
+.g b { color: var(--text); } .gd { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.gn { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 13px; }
+.stat .hint { font-size: 11.5px; color: var(--muted); }
+.steps .exp { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
+@media (max-width: 900px) { .guide { grid-template-columns: 1fr; } }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 
 /* serveurs */
@@ -155,31 +162,37 @@ svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-widt
     <p>On coupe brutalement une machine virtuelle GKE pendant que 10 clients interrogent le site chaque seconde. Kubernetes doit continuer à servir le trafic avec le serveur restant, recréer les pods perdus, puis GKE recrée la machine.</p>
   </div>
 
+  <section class="guide">
+    <div class="g"><span class="gn">1</span><div><b>10 clients</b> interrogent le site chaque seconde<div class="gd">barres vertes = réponses reçues</div></div></div>
+    <div class="g"><span class="gn">2</span><div>On clique sur <b>« Couper ce serveur »</b><div class="gd">la machine est supprimée, comme une vraie panne</div></div></div>
+    <div class="g"><span class="gn">3</span><div>On regarde : <b>le site reste en ligne</b><div class="gd">puis Kubernetes et GKE réparent tout seuls</div></div></div>
+  </section>
+
   <section class="card banner">
     <div class="state" id="state">
       <div class="ring" id="ring"></div>
       <div><div class="big" id="state-t">Connexion…</div><div class="small" id="state-d">&nbsp;</div></div>
     </div>
     <div class="spacer"></div>
-    <div class="stat"><div class="label">Disponibilité (panne)</div><div class="value" id="k-av">—</div></div>
-    <div class="stat"><div class="label">Requêtes en échec</div><div class="value" id="k-err">—</div></div>
-    <div class="stat"><div class="label">Pods rétablis (MTTR)</div><div class="value" id="k-pods">—</div></div>
-    <div class="stat"><div class="label">Serveur recréé</div><div class="value" id="k-node">—</div></div>
+    <div class="stat"><div class="label">Disponibilité</div><div class="value" id="k-av">—</div><div class="hint">% de requêtes réussies depuis la panne</div></div>
+    <div class="stat"><div class="label">Requêtes en échec</div><div class="value" id="k-err">—</div><div class="hint">sur le total envoyé</div></div>
+    <div class="stat"><div class="label">Temps de réparation</div><div class="value" id="k-pods">—</div><div class="hint">pods recréés (MTTR)</div></div>
+    <div class="stat"><div class="label">Nouveau serveur</div><div class="value" id="k-node">—</div><div class="hint">recréé par GKE</div></div>
   </section>
 
   <div class="grid2">
     <section class="card">
-      <div class="card-h"><h2>Serveurs du cluster</h2><span class="desc">nœuds GKE et pods de l'application</span><span class="meta" id="pods-meta"></span></div>
+      <div class="card-h"><h2>Serveurs du cluster</h2><span class="desc">chaque ● est une copie de l'application (pod)</span><span class="meta" id="pods-meta"></span></div>
       <div class="card-b"><div class="nodes" id="nodes"></div></div>
     </section>
     <section class="card">
-      <div class="card-h"><h2>Déroulement de la panne</h2><span class="meta" id="elapsed"></span></div>
+      <div class="card-h"><h2>Déroulement</h2><span class="desc">durées réelles mesurées ; en gris, l'attendu</span><span class="meta" id="elapsed"></span></div>
       <div class="card-b"><ol class="steps" id="steps"></ol></div>
     </section>
   </div>
 
   <section class="card">
-    <div class="card-h"><h2>Requêtes des clients</h2><span class="desc">par seconde, 90 dernières secondes</span>
+    <div class="card-h"><h2>Ce que voient les clients</h2><span class="desc">requêtes par seconde, 90 dernières secondes</span>
       <span class="meta legend"><span><i class="sw" style="background:var(--good)"></i>réussies</span><span><i class="sw" style="background:var(--crit)"></i>en échec</span><span><i class="sw" style="background:var(--warn)"></i>panne injectée</span></span></div>
     <div class="card-b"><svg class="chart" id="chart" preserveAspectRatio="none"></svg></div>
   </section>
@@ -248,9 +261,9 @@ function render(s) {
   // bandeau d'état
   const st = $("state");
   if (!last) { st.className = "state warn"; $("ring").innerHTML = ICON.wait; $("state-t").textContent = "Démarrage de la sonde…"; }
-  else if (failing) { st.className = "state bad"; $("ring").innerHTML = ICON.ko; $("state-t").textContent = "Des requêtes échouent"; $("state-d").textContent = `${last[2]} échec(s) sur ${last[1] + last[2]} à la dernière seconde`; }
-  else if (busy) { st.className = "state warn"; $("ring").innerHTML = ICON.ok; $("state-t").textContent = "Site en ligne — panne en cours"; $("state-d").textContent = "le trafic est servi par les serveurs restants"; }
-  else { st.className = "state"; $("ring").innerHTML = ICON.ok; $("state-t").textContent = "Site en ligne"; $("state-d").textContent = `${s.available}/${s.desired} pods disponibles · ${s.nodes.filter((n) => n.ready).length} serveurs`; }
+  else if (failing) { st.className = "state bad"; $("ring").innerHTML = ICON.ko; $("state-t").textContent = "Perturbation : des requêtes échouent"; $("state-d").textContent = `${last[2]} échec(s) sur ${last[1] + last[2]} à la dernière seconde`; }
+  else if (busy) { st.className = "state warn"; $("ring").innerHTML = ICON.ok; $("state-t").textContent = "Site en ligne malgré la panne"; $("state-d").textContent = "le serveur restant répond à tous les clients"; }
+  else { st.className = "state"; $("ring").innerHTML = ICON.ok; $("state-t").textContent = inc.done ? "Site en ligne — tout est réparé" : "Site en ligne"; $("state-d").textContent = `${s.available}/${s.desired} pods disponibles · ${s.nodes.filter((n) => n.ready).length} serveurs`; }
 
   // mesures
   if (inc.t) {
@@ -258,16 +271,16 @@ function render(s) {
     $("k-err").innerHTML = `${inc.ko || 0}<span class="unit">/ ${(inc.ok || 0) + (inc.ko || 0)}</span>`;
     $("k-pods").innerHTML = inc.pods_ok ? dur(inc.pods_ok - inc.t) : '<span class="unit">en cours…</span>';
     $("k-node").innerHTML = inc.node_back ? dur(inc.node_back - inc.t) : inc.node_lost ? '<span class="unit">en cours…</span>' : "—";
-  }
+  } else for (const k of ["k-av", "k-err", "k-pods", "k-node"]) $(k).textContent = "—";
 
   // serveurs
   $("pods-meta").textContent = `${s.available}/${s.desired} pods prêts`;
-  $("nodes").innerHTML = s.nodes.map((n) => {
+  $("nodes").innerHTML = s.nodes.map((n, idx) => {
     const pods = s.pods.filter((p) => p.node === n.name);
     const isNew = inc.node_lost && inc.t && Date.parse(n.age) / 1000 > inc.t;
     return `<div class="node ${n.ready ? (isNew ? "new" : "") : "down"}">
       <div class="node-h"><div class="node-ic">${ICON.srv}</div>
-        <div><div class="node-n">Serveur ${esc(short(n.name))}</div><div class="node-s">e2-standard-2${isNew ? " · recréé" : ""}</div></div>
+        <div><div class="node-n">Serveur ${idx + 1}${isNew ? " (nouveau)" : ""}</div><div class="node-s">VM …${esc(short(n.name))} · e2-standard-2</div></div>
         <span class="badge ${n.ready ? "" : "crit"}">${n.ready ? "en ligne" : "hors ligne"}</span></div>
       <div class="pods">${pods.map((p) => `<span class="pod ${p.deleting ? "del" : p.ready ? "" : "nr"}"><span class="dot ${p.deleting ? "crit" : p.ready ? "good" : "warn"}"></span>${esc(short(p.name))}</span>`).join("") || '<span class="empty">aucun pod</span>'}</div>
       <button class="btn-kill" data-kill="${esc(n.name)}" ${busy || !n.ready ? "disabled" : ""}>💥 Couper ce serveur</button>
@@ -276,16 +289,16 @@ function render(s) {
 
   // chronologie
   const steps = [
-    ["Panne injectée", "suppression brutale de la machine virtuelle", inc.t],
-    ["Panne détectée", "Kubernetes marque le serveur hors ligne", inc.node_lost],
-    ["Pods rétablis", "recréés sur le serveur restant, trafic normal", inc.pods_ok],
-    ["Serveur recréé", "GKE remplace la machine (auto-réparation)", inc.node_back],
+    ["Panne", "la machine virtuelle est supprimée brutalement", inc.t, "immédiat"],
+    ["Détection", "Kubernetes voit que le serveur ne répond plus", inc.node_lost, "≈ 40 s – 1 min"],
+    ["Réparation", "les pods perdus sont recréés sur l'autre serveur", inc.pods_ok, "≈ 1 – 2 min"],
+    ["Retour à la normale", "GKE crée une nouvelle machine", inc.node_back, "≈ 3 – 5 min"],
   ];
   let firstPending = true;
-  $("steps").innerHTML = steps.map(([t, d, at], i) => {
+  $("steps").innerHTML = steps.map(([t, d, at, exp], i) => {
     let cls = "pending";
     if (at) cls = "done"; else if (inc.t && firstPending) { cls = "now"; firstPending = false; }
-    return `<li class="${cls}"><span class="n">${at ? "✓" : i + 1}</span><div><div class="t">${t}</div><div class="d">${d}</div></div><span class="time">${at ? "+" + Math.round(at - inc.t) + " s" : ""}</span></li>`;
+    return `<li class="${cls}"><span class="n">${at ? "✓" : i + 1}</span><div><div class="t">${t}</div><div class="d">${d}</div></div><span class="time">${at ? "+" + Math.round(at - inc.t) + " s" : `<span class="exp">${exp}</span>`}</span></li>`;
   }).join("");
   $("elapsed").innerHTML = inc.t ? (inc.done ? "terminée" : `depuis ${Math.round(inc.elapsed)} s`) : "aucune panne pour l'instant";
 

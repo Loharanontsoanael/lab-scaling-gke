@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -139,6 +140,28 @@ def probe() -> None:
                 incident["ko"] = incident.get("ko", 0) + ko
 
 
+GCLOUD = shutil.which("gcloud") or str(Path.home() / ".local/google-cloud-sdk/bin/gcloud")
+
+
+def delete_vm(node: str) -> None:
+    """Supprime la VM ; en cas d'échec, l'erreur s'affiche dans le journal et la panne est annulée."""
+    cmd = [GCLOUD, "compute", "instances", "delete", node, "--zone", ZONE, "--quiet", "--async"]
+    if PROJECT:
+        cmd += ["--project", PROJECT]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        ok, err = out.returncode == 0, (out.stderr or out.stdout).strip().splitlines()
+    except Exception as exc:  # noqa: BLE001
+        ok, err = False, [str(exc)]
+    with lock:
+        if ok:
+            events.append({"t": time.time(), "msg": "☁️ Google Cloud a accepté la suppression de la VM"})
+        else:
+            events.append({"t": time.time(), "msg": "❌ Échec de la coupure : " + (err[-1] if err else "erreur inconnue")})
+            incident.clear()
+    print("gcloud:", ok, err, flush=True)
+
+
 def kill(node: str) -> str:
     with lock:
         if incident and not incident.get("done"):
@@ -148,10 +171,7 @@ def kill(node: str) -> str:
         incident.clear()
         incident.update(node=node, t=time.time(), nodes_before=sum(n["ready"] for n in state["nodes"]))
         events.append({"t": time.time(), "msg": f"💥 Panne brutale : suppression de la VM {node}"})
-    subprocess.Popen(
-        ["gcloud", "compute", "instances", "delete", node, "--zone", ZONE, "--quiet", "--async", *(["--project", PROJECT] if PROJECT else [])],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )  # fmt: skip
+    threading.Thread(target=delete_vm, args=(node,), daemon=True).start()
     return "ok"
 
 
