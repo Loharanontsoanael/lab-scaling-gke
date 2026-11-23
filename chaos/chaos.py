@@ -133,7 +133,8 @@ def inject(mode: str) -> dict:
         k8s.sh("minikube", "node", "stop", node, check=False)
     elif mode == "vm":
         log(f"💥 Suppression brutale de la VM {node}")
-        k8s.sh("gcloud", "compute", "instances", "delete", node, "--zone", ZONE, "--quiet", "--async")
+        cmd = ("gcloud", "compute", "instances", "delete", node, "--zone", ZONE, "--quiet")
+        threading.Thread(target=k8s.sh, args=cmd, kwargs={"check": False}, daemon=True).start()  # ≈ 1 min, en fond
     return info
 
 

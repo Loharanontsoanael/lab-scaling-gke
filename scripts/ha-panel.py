@@ -145,19 +145,19 @@ GCLOUD = shutil.which("gcloud") or str(Path.home() / ".local/google-cloud-sdk/bi
 
 def delete_vm(node: str) -> None:
     """Supprime la VM ; en cas d'échec, l'erreur s'affiche dans le journal et la panne est annulée."""
-    cmd = [GCLOUD, "compute", "instances", "delete", node, "--zone", ZONE, "--quiet", "--async"]
+    cmd = [GCLOUD, "compute", "instances", "delete", node, "--zone", ZONE, "--quiet"]
     if PROJECT:
         cmd += ["--project", PROJECT]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
         ok, err = out.returncode == 0, (out.stderr or out.stdout).strip().splitlines()
     except Exception as exc:  # noqa: BLE001
         ok, err = False, [str(exc)]
     with lock:
         if ok:
-            events.append({"t": time.time(), "msg": "☁️ Google Cloud a accepté la suppression de la VM"})
+            events.append({"t": time.time(), "msg": "☁️ Google Cloud a terminé la suppression de la VM"})
         else:
-            events.append({"t": time.time(), "msg": "❌ Échec de la coupure : " + (err[-1] if err else "erreur inconnue")})
+            events.append({"t": time.time(), "msg": "❌ Échec de la coupure : " + next((e for e in err if "ERROR" in e), err[-1] if err else "erreur inconnue")})
             incident.clear()
     print("gcloud:", ok, err, flush=True)
 
