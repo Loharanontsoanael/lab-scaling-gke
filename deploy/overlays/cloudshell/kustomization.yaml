@@ -1,0 +1,47 @@
+# Mode « Cloud Shell » : la même application, sur un cluster minikube dans Google Cloud Shell
+# (gratuit, sans compte de facturation). Ressources réduites pour tenir sur la VM Cloud Shell.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: lab-scaling-gke
+resources:
+  - ../../base
+  - hpa.yaml
+
+images:
+  - name: scaling-lab
+    newName: scaling-lab
+    newTag: local # construite directement dans minikube (minikube image build)
+
+patches:
+  # Image locale : ne jamais la télécharger depuis un registre
+  # + ressources réduites (la VM Cloud Shell est petite)
+  - target: { kind: Deployment, name: webapp }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: { cpu: 100m, memory: 96Mi }
+          limits: { cpu: 250m, memory: 192Mi }
+      - op: remove
+        path: /spec/replicas
+      # Haute dispo : si un nœud tombe, recréer ses pods ailleurs après 15 s (défaut Kubernetes : 300 s)
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
+          - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
+  # Pas de load balancer GCP dans minikube : NodePort (kube-proxy répartit entre TOUS les pods)
+  - target: { kind: Service, name: webapp }
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080

@@ -5,6 +5,7 @@ Pannes :
   pod   crash du processus d'un pod             → Kubernetes redémarre le conteneur
   node  drain d'un nœud (maintenance planifiée)  → pods replanifiés ailleurs, PDB respecté
   vm    suppression brutale d'une VM (panne)     → pods évincés après détection, VM recréée par GKE
+  mknode arrêt brutal d'un nœud minikube (Cloud Shell) → trafic servi par l'autre nœud, pods recréés
 
 Usage : python chaos/chaos.py pod|node|vm [--repeat 3] [--rate 10] [--observe 180]
 """
@@ -88,9 +89,11 @@ def monitoring_nodes() -> set[str]:
     return {p["spec"].get("nodeName") for p in pods if p["metadata"]["name"].startswith(keep)}
 
 
-def victim_pod(spare_monitoring: bool = False) -> tuple[str, str]:
+def victim_pod(spare_monitoring: bool = False, avoid_node: str | None = None) -> tuple[str, str]:
     pods = k8s.kubectl_json("-n", k8s.NS, "get", "pods", "-l", "app.kubernetes.io/name=webapp")["items"]
     running = [p for p in pods if p["status"].get("phase") == "Running"]
+    if avoid_node:  # minikube : ne jamais arrêter le nœud qui porte le plan de contrôle
+        running = [p for p in running if p["spec"]["nodeName"] != avoid_node] or running
     if spare_monitoring:
         avoid = monitoring_nodes()
         safe = [p for p in running if p["spec"]["nodeName"] not in avoid]
@@ -113,7 +116,7 @@ def ready_nodes() -> int:
 
 
 def inject(mode: str) -> dict:
-    pod, node = victim_pod(spare_monitoring=mode in ("node", "vm"))
+    pod, node = victim_pod(spare_monitoring=mode in ("node", "vm"), avoid_node="minikube" if mode == "mknode" else None)
     info = {"pod": pod, "node": node}
     if mode == "pod":
         log(f"💥 Crash du processus dans {pod}")
@@ -125,6 +128,9 @@ def inject(mode: str) -> dict:
     elif mode == "node":
         log(f"💥 Drain du nœud {node} (maintenance)")
         k8s.kubectl("drain", node, "--ignore-daemonsets", "--delete-emptydir-data", "--timeout=180s", check=False)
+    elif mode == "mknode":
+        log(f"💥 Panne brutale du serveur {node} (minikube node stop)")
+        k8s.sh("minikube", "node", "stop", node, check=False)
     elif mode == "vm":
         log(f"💥 Suppression brutale de la VM {node}")
         k8s.sh("gcloud", "compute", "instances", "delete", node, "--zone", ZONE, "--quiet", "--async")
@@ -174,7 +180,8 @@ def summarize(samples, t_inject: float) -> dict:
 def run_once(mode: str, rep: int, args, out_dir: Path) -> dict:
     log(f"━━ Chaos « {mode} » — répétition {rep}/{args.repeat}")
     k8s.wait_rollout()
-    url = f"http://{k8s.service_ip()}/"
+    # TARGET_URL : cible explicite (ex. Cloud Shell/minikube via port-forward, sans load balancer)
+    url = os.getenv("TARGET_URL") or f"http://{k8s.service_ip()}/"
     nodes_before = ready_nodes()
 
     probe = Probe(url, args.rate)
@@ -188,6 +195,9 @@ def run_once(mode: str, rep: int, args, out_dir: Path) -> dict:
 
     if mode == "node":
         k8s.kubectl("uncordon", info["node"], check=False)
+    if mode == "mknode":
+        log(f"Redémarrage du serveur {info['node']}")
+        k8s.sh("minikube", "node", "start", info["node"], check=False)
 
     with open(out_dir / f"{mode}_rep{rep}_probe.csv", "w", newline="") as fh:
         w = csv.writer(fh)
@@ -204,7 +214,7 @@ def run_once(mode: str, rep: int, args, out_dir: Path) -> dict:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("mode", choices=["pod", "node", "vm"])
+    p.add_argument("mode", choices=["pod", "node", "vm", "mknode"])
     p.add_argument("--repeat", type=int, default=3)
     p.add_argument("--rate", type=float, default=10, help="requêtes/s de la sonde")
     p.add_argument("--baseline", type=int, default=15, help="secondes de mesure avant la panne")

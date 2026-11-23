@@ -1,5 +1,30 @@
 # 🎤 Démo jury — déroulé complet
 
+> ## ☁️ Option sans facturation : Google Cloud Shell (gratuit)
+> Si le compte de facturation GCP n'est pas actif, la démo tourne dans **Google Cloud Shell**
+> (VM Google gratuite, sans carte) sur un cluster Kubernetes de **2 serveurs** (minikube).
+>
+> 1. Ouvrir https://shell.cloud.google.com (compte Google habituel)
+> 2. Dans le terminal Cloud Shell :
+>    ```bash
+>    git clone https://github.com/Loharanontsoanael/lab-scaling-gke.git && cd lab-scaling-gke
+>    scripts/cloudshell.sh up              # ≈ 5–8 min
+>    ```
+> 3. 2e onglet Cloud Shell (bouton **+**) : `cd lab-scaling-gke && scripts/cloudshell.sh watch`
+> 4. **Démo haute disponibilité** (onglet 1) :
+>    ```bash
+>    scripts/cloudshell.sh panne-serveur   # coupe brutalement un serveur : la sonde montre ✔/✘ chaque seconde
+>    scripts/cloudshell.sh panne-pod       # tue un pod : auto-réparation
+>    ```
+> 5. Bonus : `scripts/cloudshell.sh load` (Locust → « Aperçu sur le Web », port 8089) pour le HPA,
+>    `scripts/cloudshell.sh vertical small|big` et `resize 1000m` pour le vertical, `reset` pour revenir.
+>
+> **À dire pendant la panne de serveur :** « Je coupe un des deux serveurs. Pendant ~40 s, Kubernetes ne
+> sait pas encore qu'il est mort (délai de détection, MTTD) : quelques requêtes échouent. Dès qu'il est
+> déclaré *NotReady*, son pod est retiré du service et tout le trafic part vers l'autre serveur ; 15 s plus
+> tard le pod perdu est recréé sur le serveur survivant (MTTR). Sur GKE, on aurait en plus l'auto-repair
+> qui recrée la VM. »
+
 > Projet GCP : `lab-scaling-gke-a43f3a` · zone `europe-west1-b` · tout se lance depuis `~/Projects/lab-scaling-gke`
 
 ---
